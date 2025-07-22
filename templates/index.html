@@ -1,0 +1,294 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title>Food Truck Billing</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <style>
+      :root {
+        --primary: #2b8a3e;
+        --accent: #f0f0f0;
+        --danger: #c92a2a;
+      }
+
+      body {
+        font-family: "Segoe UI", sans-serif;
+        margin: 0;
+        padding: 20px;
+        background-color: #fff;
+        color: #333;
+      }
+
+      header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+      }
+
+      .admin-login {
+        text-decoration: none;
+        background-color: var(--primary);
+        color: white;
+        padding: 8px 16px;
+        border-radius: 6px;
+        font-size: 14px;
+      }
+
+      .menu-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+        gap: 10px;
+      }
+
+      .menu-item {
+        background-color: var(--accent);
+        border: 1px solid #ccc;
+        border-radius: 8px;
+        padding: 10px;
+        text-align: center;
+        cursor: pointer;
+      }
+
+      .bill-list {
+        list-style: none;
+        padding-left: 0;
+      }
+
+      .bill-list li {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 8px;
+        border-bottom: 1px solid #ddd;
+      }
+
+      .remove-btn {
+        background-color: var(--danger);
+        color: white;
+        border: none;
+        padding: 4px 8px;
+        border-radius: 4px;
+        cursor: pointer;
+      }
+
+      .total {
+        font-weight: bold;
+        font-size: 18px;
+        margin-top: 15px;
+      }
+
+      button {
+        background-color: var(--primary);
+        color: white;
+        padding: 12px 20px;
+        border: none;
+        font-size: 16px;
+        border-radius: 6px;
+        cursor: pointer;
+        margin-top: 10px;
+      }
+
+      .alert {
+        position: fixed;
+        bottom: 20px;
+        right: 20px;
+        background-color: var(--primary);
+        color: white;
+        padding: 10px 16px;
+        border-radius: 6px;
+        display: none;
+      }
+    </style>
+  </head>
+  <body>
+    <header>
+      <h2>Food Truck Menu</h2>
+      <a href="/admin/login" class="admin-login">🔐 Admin Login</a>
+    </header>
+
+    <div class="menu-grid" id="menu"></div>
+
+    <h3>Selected Items</h3>
+    <ul class="bill-list" id="bill"></ul>
+    <div class="total">Total: ₹<span id="total">0</span></div>
+    <button onclick="openBillPreview()">🖨️ Print Bill</button>
+
+    <div class="alert" id="alert"></div>
+
+    <script>
+      let bill = [];
+
+      async function loadMenu() {
+        try {
+          const res = await fetch("/api/menu");
+          if (!res.ok) throw new Error("Failed to fetch menu");
+          const items = await res.json();
+          const menu = document.getElementById("menu");
+          menu.innerHTML = "";
+          items.forEach((item) => {
+            const div = document.createElement("div");
+            div.className = "menu-item";
+            div.textContent = `${item.name} - ₹${parseFloat(item.price).toFixed(
+              2
+            )}`;
+            div.addEventListener("click", () => {
+              const existing = bill.find((b) => b.name === item.name);
+              if (existing) {
+                existing.qty += 1;
+              } else {
+                bill.push({ ...item, qty: 1 });
+              }
+              updateBill();
+            });
+            menu.appendChild(div);
+          });
+        } catch (err) {
+          showAlert("⚠️ Menu failed to load", true);
+          console.error(err);
+        }
+      }
+
+      function updateBill() {
+        const billList = document.getElementById("bill");
+        billList.innerHTML = "";
+        let total = 0;
+        bill.forEach((item, i) => {
+          const li = document.createElement("li");
+          const amt = (item.qty * item.price).toFixed(2);
+          li.innerHTML = `${item.name} x${item.qty} - ₹${amt}
+          <button class="remove-btn" onclick="removeItem(${i})">❌</button>`;
+          billList.appendChild(li);
+          total += item.qty * item.price;
+        });
+        document.getElementById("total").innerText = total.toFixed(2);
+      }
+
+      function removeItem(index) {
+        bill.splice(index, 1);
+        updateBill();
+      }
+
+      function openBillPreview() {
+        if (bill.length === 0) {
+          showAlert("Nothing to print", true);
+          return;
+        }
+
+        const now = new Date();
+        const date = now.toLocaleDateString("en-GB");
+        const time = now.toLocaleTimeString("en-GB");
+        const billNo = Math.floor(Math.random() * 10000) + 1000;
+
+        let text = "";
+        text += "  *** FOOD TRUCK BILL ***\n";
+        text += " Near Main Road, City\n";
+        text += " Mob: 9876543210\n";
+        text += "---------------------------\n";
+        text += `Bill No: ${billNo}  Date: ${date}\n`;
+        text += `Time   : ${time}\n`;
+        text += "---------------------------\n";
+        text += "Item           Qty   Amt\n";
+        text += "---------------------------\n";
+
+        let totalQty = 0;
+        let totalAmt = 0;
+
+        bill.forEach((item) => {
+          const name = item.name.slice(0, 13).padEnd(14);
+          const qty = String(item.qty).padStart(3);
+          const amt = String((item.qty * item.price).toFixed(0)).padStart(6);
+          totalQty += item.qty;
+          totalAmt += item.qty * item.price;
+          text += `${name}${qty} ${amt}\n`;
+        });
+
+        text += "---------------------------\n";
+        text += `Items: ${totalQty}   Total: ₹${totalAmt.toFixed(2)}\n`;
+        text += "---------------------------\n";
+        text += "   Thank You! Visit Again\n\n";
+
+        const printWindow = window.open("", "", "width=300,height=600");
+        printWindow.document.write(`
+    <html>
+      <head>
+        <title>Bill Print</title>
+        <style>
+          @media print {
+            @page {
+              size: 80mm auto;
+              margin: 0;
+            }
+            html, body {
+              margin: 0;
+              padding: 0;
+              width: 100%;
+              height: 100%;
+              font-family: monospace;
+              font-size: 36px;
+              display: flex;
+              justify-content: center;
+              align-items: center;
+            }
+            pre {
+              white-space: pre-wrap;
+              word-wrap: break-word;
+              text-align: left;
+            }
+          }
+          html, body {
+            margin: 0;
+            padding: 0;
+            width: 100%;
+            height: 100%;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            background: white;
+            font-family: monospace;
+            font-size: 42px;
+          }
+          pre {
+            white-space: pre-wrap;
+            word-wrap: break-word;
+          }
+        </style>
+      </head>
+      <body onload="window.print();">
+        <pre>${text}</pre>
+      </body>
+    </html>
+  `);
+        printWindow.document.close();
+
+        // Save to backend
+        fetch("/api/bill", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ items: bill, total: totalAmt }),
+        })
+          .then((res) => res.json())
+          .then((data) => {
+            showAlert(data.message || "Bill saved!");
+            bill = [];
+            updateBill();
+          })
+          .catch((err) => {
+            console.error("Save failed:", err);
+            showAlert("Printed, but failed to save", true);
+          });
+      }
+
+      function showAlert(message, isError = false) {
+        const alertBox = document.getElementById("alert");
+        alertBox.textContent = message;
+        alertBox.style.backgroundColor = isError ? "#c92a2a" : "#2b8a3e";
+        alertBox.style.display = "block";
+        setTimeout(() => {
+          alertBox.style.display = "none";
+        }, 3000);
+      }
+
+      loadMenu();
+    </script>
+  </body>
+</html>
